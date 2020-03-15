@@ -1,9 +1,11 @@
+#v41 changes- removed questionno, some clarity stuff
+# todo:
+# document
+
 import logging
 import logging.handlers
 from wsgiref.simple_server import make_server
 import mysql.connector
-
-version = '43'
 
 # set up logging
 logger = logging.getLogger(__name__)
@@ -96,9 +98,11 @@ welcome1 = """
   <div class="textColumn">
     <h1><span style="color:#ff0000;">Q</span><span style="color:#ff7f00;">U</span><span style="color:#ffff00;">I</span><span style="color:#00ff00;">Z</span><span style="color:#00ffff;">Z</span></h1>
     <p>Created by Oliver Cieplinski </p>
+    <p>Version 41: sign up added </p>
 """
-welcome1 += '\n   <p>Version ' + version + ': sign up added </p>'
-icon = '<h1><font color="#FFE0D0">QUIZZ v' + version + '</font></h1>'
+icon = """
+<h1><font color="#40E0D0">QUIZZ v41</font></h1>
+"""
 welcome2 = """
   </div>
 </body>
