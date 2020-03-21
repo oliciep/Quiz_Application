@@ -1,16 +1,15 @@
-#v41 changes- removed questionno, some clarity stuff
-# todo:
-# document
-
-import logging
-import logging.handlers
+import logging #package for logging
+import logging.handlers #package for
 from wsgiref.simple_server import make_server
 import mysql.connector
+
+version = '47'
+whatsnew = 'Battle your friends!'
 
 # set up logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-LOG_FILE = '/opt/python/log/sample-app.log'
+LOG_FILE = '/opt/python/log/sample-app.log' #where file of logger is
 handler = logging.handlers.RotatingFileHandler(LOG_FILE, maxBytes=1048576, backupCount=5)
 handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -93,16 +92,16 @@ header = """
   </style>
 </head>
 """
+# title screen
 welcome1 = """
 <body id="sample">
   <div class="textColumn">
     <h1><span style="color:#ff0000;">Q</span><span style="color:#ff7f00;">U</span><span style="color:#ffff00;">I</span><span style="color:#00ff00;">Z</span><span style="color:#00ffff;">Z</span></h1>
     <p>Created by Oliver Cieplinski </p>
-    <p>Version 41: sign up added </p>
 """
-icon = """
-<h1><font color="#40E0D0">QUIZZ v41</font></h1>
-"""
+# title info
+welcome1 += '\n   <p>Version ' + version + '<br> Whats new?: ' + whatsnew + ' </p>'
+icon = '<h1><font color="#FFE0D0">QUIZZ v' + version + '</font></h1>'
 welcome2 = """
   </div>
 </body>
@@ -132,6 +131,8 @@ def getFullName(cursor, username):
     return fullname
 # undergoes quiz process
 def quizProcess(bodyDict,mysqlcnx,cursor, body, gameover,username):
+    chalmode = False
+    print(chalid)
     function = ''
     print(bodyDict)
     qid = bodyDict['qid']
@@ -154,6 +155,8 @@ def quizProcess(bodyDict,mysqlcnx,cursor, body, gameover,username):
     cursor.execute(query)
     numqs = int(cursor.fetchone()[0])
     logger.info("numqs: %d", numqs)
+    if chalid is not None:
+        chalmode = True
     if numqs >= int(qsdone) and gameover != True:
         result = answer
         print(result)
@@ -175,7 +178,35 @@ def quizProcess(bodyDict,mysqlcnx,cursor, body, gameover,username):
             query = 'update quizzes set plays = plays + 1 where quizid = ' + quizid
             cursor.execute(query)
             mysqlcnx.commit()
-            body += greatestscore(cursor,score,quizid,userid)
+            if chalmode == True:
+                body += 'You have completed the challenge!<br>'
+                print(chalid)
+                if chalid == 1:
+                    print('fasdf')
+                    query = 'insert into challenge(user1,user2,quizid,score1) values("' + username + '","' + opponentid + '",' + str(quizid) + ',' + str(score) + ')'
+                    print('insert into challenge(user1,user2,quizid,score1) values("' + username + '","' + opponentid + '",' + str(quizid) + ',' + str(score) + ')')
+                    cursor.execute(query)
+                    mysqlcnx.commit()
+                else:
+                    print('challengeid ' + challengeid)
+                    query = 'select user1 from challenge where id = ' + str(challengeid)
+                    cursor.execute(query)
+                    score = int(score)
+                    opp = cursor.fetchone()[0]
+                    query = 'select score1 from challenge where id = ' + str(challengeid)
+                    cursor.execute(query)
+                    oppscore = cursor.fetchone()[0]
+                    if score > int(oppscore):
+                        body += '<font color = "green">Congratulations! You defeated ' + str(opp) + ' by ' + str((int(score)-int(oppscore))) + ' points in the challenge!</font>'
+                    elif score == int(oppscore):
+                        body += '<font color = "yellow">Wow! You drew with ' + str(opp) + ' in the challenge!</font>'
+                    else:
+                        body += '<font color = "red">Oh no! You lost to ' + str(opp) + ' by ' + str((int(oppscore-int(score)))) + ' in the challenge!</font>'
+                    body += '<br>'
+                    query = 'delete from challenge where id = ' + challengeid
+                    cursor.execute(query)
+                    mysqlcnx.commit()
+           # body += greatestscore(cursor,score,quizid,userid)
             body += 'The 5 highest scores are: '
             body += highscore(cursor,quizid,numqs)
             body += '<br> <br>'
@@ -183,7 +214,7 @@ def quizProcess(bodyDict,mysqlcnx,cursor, body, gameover,username):
             gameover = True
     return gameover, score, qid, qsdone, body, quizid
 
-#callback
+#allows user to upvote or downvote a quiz
 def vote(username,userid,quizid):
     formBody = ''
     formBody += initForm(username,formBody,userid,'')
@@ -193,7 +224,7 @@ def vote(username,userid,quizid):
     formBody += '<button name="vote" type ="submit" value ="dislike">I dislike it.</button>  '
     formBody += '<input type="hidden" name="quizid" value="' + quizid + '">'
     return formBody
-
+#creates 
 def initForm(username,formBody,userid,whichmode):
     formBody += '<p><form action="quiz" method="post">'
     formBody += '<input type="hidden" name="authentication" value="DONE">'
@@ -210,6 +241,7 @@ def dashboard(username,userid):
     formBody += '<button name ="mode" type ="submit" value ="select">Select Quiz</button> <br>'
     formBody += '<button name ="mode" type ="submit" value ="create">Create Quiz</button> <br>'
     formBody += '<button name ="mode" type ="submit" value ="add">Add Questions</button> <br>'
+    formBody += '<button name ="mode" type ="submit" value ="challenge">Challenge a Friend</button>'
     return formBody
 
 def selectQuiz(username,cursor,userid,sort): 
@@ -218,20 +250,25 @@ def selectQuiz(username,cursor,userid,sort):
     formBody += 'Sort by:  '
     formBody += '<button name ="sort" type ="submit" value ="rated">Highest Rated</button>   '
     formBody += '<button name ="sort" type ="submit" value ="popular">Popular</button>    '
-    formBody += '<button name ="sort" type ="submit" value ="recent">Recent</button> <br>'
+    formBody += '<button name ="sort" type ="submit" value ="recent">Recent</button>'
+    formBody += '<button name ="sort" type ="submit" value ="length">Length</button> <br>'
     formBody += 'Select Quiz: <br><br>'
     i = 1
     if sort != '':
         if sort == 'rated':
-            query = 'select quizid,title,reputation,plays from quizzes order by reputation desc'
+            query = 'select quizid,title,reputation,plays,topic,creator,length from quizzes order by reputation desc'
             cursor.execute(query)
             quizinfo = cursor.fetchall()
         if sort == 'popular':
-            query = 'select quizid,title,reputation,plays from quizzes order by plays desc'
+            query = 'select quizid,title,reputation,plays,topic,creator,length from quizzes order by plays desc'
             cursor.execute(query)
             quizinfo = cursor.fetchall()
         if sort == 'recent':
-            query = 'select quizid,title,reputation,plays from quizzes order by quizid desc'
+            query = 'select quizid,title,reputation,plays,topic,creator,length from quizzes order by quizid desc'
+            cursor.execute(query)
+            quizinfo = cursor.fetchall()
+        if sort == 'length':
+            query = 'select quizid,title,reputation,plays,topic,creator,length from quizzes order by length asc'
             cursor.execute(query)
             quizinfo = cursor.fetchall()
     for q in quizinfo:
@@ -239,23 +276,35 @@ def selectQuiz(username,cursor,userid,sort):
         quiname = str(q[1])
         rep = str(q[2])
         plays = str(q[3])
-        formBody += '<button name="quizid" type = "submit" value = "' + quizid + '">' + quiname  + '</button> Reputation: ' + rep + '  Plays: ' + plays 
+        topic = str(q[4])
+        creator = str(q[5])
+        length = str(q[6])
+        repi = int(rep)
+        if repi > 0:
+            colour = 'green'
+        elif repi == 0:
+            colour = 'yellow'
+        elif repi < 0:
+            colour = 'red'
+        formBody += '<button name="quizid" type = "submit" value = "' + quizid + '">' + quiname  + '</button> Created by: ' + creator + ' <br> Topic: <font color = "purple">' + topic + '</font>  Length: <font color = "orange">' + length + '</font> questions<br> <font color = "' + colour + '">Reputation: ' + rep + '</font>   Plays: <font color = "blue">' + plays + '</font>'
         formBody += '<br><br>'
         i = i + 1
     return formBody
 def register():
     formBody = '<p><form action="quiz" method="post">'
     formBody += 'Enter your username: <br>'
-    formBody += '<input type="text" name="username"> <br>'
+    formBody += '<input type="text" name="username" autocomplete="off"> <br>'
     formBody += 'Enter your password: <br>'
-    formBody += '<input type="text" name="password"> <br>'
+    formBody += '<input type="text" name="password" autocomplete="off"> <br>'
 
 def createQuiz(username,cursor,userid,bodyDict):
     formBody = '<p><form action="quiz" method="post">'
     formBody += initForm(username,formBody,userid,'create')
     formBody += 'Create Quiz: <br><br>'
     formBody += 'What is the name of your quiz? '
-    formBody += '<input type="text" name="quizname"> <br>'
+    formBody += '<input type="text" name="quizname" autocomplete="off"> <br>'
+    formBody += 'What is the topic of your quiz?'
+    formBody += '<input type="text" name="topic"> <br>'
     formBody += '<input type="submit" value="Submit">'
     return formBody
 
@@ -278,10 +327,37 @@ def addQuestions(username,cursor,userid):
     formBody = '<p><form action="quiz" method="post">'
     formBody += initForm(username,formBody,userid,'add')
     formBody += 'Question: '
-    formBody += '<input type="text" name="question"> <br>'
+    formBody += '<input type="text" name="question" autocomplete="off"> <br>'
     formBody += 'Answer: '
-    formBody += '<input type="text" name="answer">'
+    formBody += '<input type="text" name="answer" autocomplete="off">'
     formBody += '<input type="submit" value="Submit">'
+    return formBody
+
+def challenge(username,cursor,userid):
+    formBody = '<p><form action="quiz" method="post">'
+    formBody += initForm(username,formBody,userid,'add')
+    global chalid
+    chalid = 0
+    formBody += 'Welcome to the challenge screen! <br> <font color = "yellow">Pending Challenges:</font> <br>'
+    query = 'select id,user1,quizid from challenge where user2 = ' + userid
+    cursor.execute(query)
+    challenges = cursor.fetchall()
+    for c in challenges:
+        query = 'select title from quizzes where quizid = ' + str(c[2])
+        cursor.execute(query)
+        quiname = str(cursor.fetchone()[0])
+        formBody += '<font color = "green">' + str(c[1]) + ' challenged you to a quiz on ' + quiname + '!</font>'
+        formBody += '<button name ="chalacc" type = "submit" value = ' + str(c[0]) + '>Play!</button>'
+    formBody += '<br> Or please choose the user you want to challenge. <br>'
+    query = 'select count(id) from users'
+    cursor.execute(query)
+    cap = int(int(cursor.fetchone()[0]) + 1)
+    for i in range(1,cap):
+        query = 'select username from users where users.id = ' + str(i)
+        cursor.execute(query)
+        user = str(cursor.fetchone()[0])
+        formBody += '<button name="userid2" type = "submit" value = "' + str(i) + '">' + user + '</button>'
+        formBody += '<br><br>'
     return formBody
 
 def highscore(cursor,quizid,numqs):
@@ -321,16 +397,16 @@ def highscore(cursor,quizid,numqs):
     strscores += '</table>'
     return strscores
 
-def greatestscore(cursor,score,quizid,userid):
-    string = ''
-    query = 'select score from scores where userid = ' + str(userid) + ' and quizid = ' + str(quizid) + ' limit 1'
-    print('query: ' + query)
-    cursor.execute(query)
-    newscore = str(cursor.fetchone()[0])
-    if int(score) > int(newscore):
-        string += 'Congratulations! You have beaten your previous best!'
-    string += '<br>'
-    return string
+#def greatestscore(cursor,score,quizid,userid):
+    #string = ''
+    #query = 'select score from scores where userid = ' + str(userid) + ' and quizid = ' + str(quizid) + ' limit 1'
+   # print('query: ' + query)
+    #cursor.execute(query)
+   # newscore = str(cursor.fetchone()[0])
+   # if int(score) > int(newscore):
+    #    string += 'Congratulations! You have beaten your previous best!'
+   # string += '<br>'
+    #return string
 
 def application(environ, start_response):
     dbsampleout = ''
@@ -350,13 +426,13 @@ def application(environ, start_response):
             print('hi')
             body += '<p><form action="signup" method="post">'
             body += '<font color="white">Username: </font>'
-            body += '<input type="text" name="uname"> <br>'
+            body += '<input type="text" name="uname" autocomplete="off"> <br>'
             body += '<font color="white">Password: </font>'
-            body += '<input type="text" name="pword"> <br>'
+            body += '<input type="text" name="pword" autocomplete="off"> <br>'
             body += '<font color="white">First Name: </font>'
-            body += '<input type="text" name="fname"> <br>'
+            body += '< type="text" name="fname" autocomplete="off"> <br>'
             body += '<font color="white">Last Name: </font>'
-            body += '<input type="text" name="lname">'
+            body += '<input type="text" name="lname" autocomplete="off">'
             body += '<input type="submit" value="Sign Up">'
             body += '</form></p>'
             print(bodyDict)
@@ -419,49 +495,15 @@ def application(environ, start_response):
                             mysqlcnx.commit()
                     if not 'mode' in bodyDict or bodyDict['mode'] == '':    
                         body += dashboard(username,userid)
-                    elif bodyDict['mode'] == 'create':
-                        if 'quizname' in bodyDict:
-                            print('got here')
-                            qname = bodyDict['quizname']
-                            print('got here')
-                            query = 'insert into quizzes(title,reputation,plays) values("' + str(qname) + '",0,0)'
-                            print(query)
+                    elif bodyDict['mode'] == 'play' or 'chalacc' in bodyDict:
+                        if 'chalacc' in bodyDict:
+                            global challengeid
+                            challengeid = bodyDict['chalacc']
+                            query = 'select quizid from challenge where id = ' + str(challengeid)
                             cursor.execute(query)
-                            print('got here')
-                            mysqlcnx.commit()
-                            print(query)
-                            body += dashboard(username,userid)
+                            quizid = str(cursor.fetchone()[0])
                         else:
-                            body += createQuiz(username,cursor,userid,bodyDict)
-                    elif bodyDict['mode'] == 'select' or 'sort' in bodyDict:
-                        if 'sort' in bodyDict:
-                            sort = bodyDict['sort']
-                        else:
-                            sort = 'popular'
-                        body += selectQuiz(username,cursor,userid,sort)
-                    elif bodyDict['mode'] == 'add':
-                        if 'quizno' in bodyDict or 'question' in bodyDict:
-                            if 'quizno' in bodyDict:
-                                global qno
-                                qno = bodyDict['quizno']
-                            if 'question' in bodyDict:
-                                q = bodyDict['question']
-                                q = q.replace("+", " ")
-                                q = q.replace("%3F","?")
-                                a = bodyDict['answer']
-                                a = a.replace("+", " ")
-                                a = a.replace("%3F","?")
-                                query = 'insert into questions(question,answer,quizid) values("' + str(q) + '","' + str(a) + '",' + str(qno) + ')'
-                                print(query)
-                                cursor.execute(query)
-                                mysqlcnx.commit()
-                                body += dashboard(username,userid)
-                            else:
-                                body += addQuestions(username,cursor,userid)
-                        else:
-                            body += addQuestionsSelect(username,cursor,userid)
-                    elif bodyDict['mode'] == 'play':
-                        quizid = bodyDict['quizid']
+                            quizid = bodyDict['quizid']
                         if 'answer' in bodyDict:
                             gameover,score,qid,qsdone,body,quizid = quizProcess(bodyDict,mysqlcnx,cursor,body,gameover,username)
                         else:
@@ -479,7 +521,7 @@ def application(environ, start_response):
                             answer = answer.replace(" ", "+")
                             formBody = ''
                             body += initForm(username,formBody,userid,'play')
-                            body += question + ':<br><input type="text" name="usanswer">'
+                            body += question + ':<br><input type="text" name="usanswer" autocomplete="off">'
                             body += '<input type="hidden" name="quizid" value=' + quizid + '>'
                             body += '<input type="hidden" name="qid" value=' + qid + '>'
                             body += '<input type="hidden" name="score" value=' + score + '>'
@@ -487,6 +529,62 @@ def application(environ, start_response):
                             body += '<input type="hidden" name="question" value=' + question + '>'
                             body += '<input type="hidden" name="answer" value=' + answer + '>'
                             body += '<input type="submit" value="Submit"></p>'
+                    elif bodyDict['mode'] == 'create':
+                        if 'quizname' in bodyDict:
+                            topic = bodyDict['topic']
+                            qname = bodyDict['quizname']
+                            qname = qname.replace("+", " ")
+                            qname = qname.replace("%3F","?")
+                            query = 'insert into quizzes(title,reputation,plays,topic,creator,length) values("' + str(qname) + '",0,0,"' + topic + '", "' + str(username) + '",0)'
+                            print(query)
+                            cursor.execute(query)
+                            mysqlcnx.commit()
+                            print(query)
+                            body += dashboard(username,userid)
+                        else:
+                            body += createQuiz(username,cursor,userid,bodyDict)
+                    elif bodyDict['mode'] == 'select' or 'sort' in bodyDict or 'userid2' in bodyDict:
+                        global opponentid
+                        if 'sort' in bodyDict:
+                            sort = bodyDict['sort']
+                            opponentid = ''
+                        elif 'userid2' in bodyDict:
+                            opponentid = str(bodyDict['userid2'])
+                            global chalid
+                            chalid = 1
+                            sort = 'popular'
+                            print('hey')
+                        else:
+                            opponentid = ''
+                            sort = 'popular'
+                        body += selectQuiz(username,cursor,userid,sort)
+                    elif bodyDict['mode'] == 'challenge':
+                        body += challenge(username,cursor,userid)
+                    elif bodyDict['mode'] == 'add':
+                        if 'quizno' in bodyDict or 'question' in bodyDict:
+                            if 'quizno' in bodyDict:
+                                global qno
+                                qno = bodyDict['quizno']
+                            if 'question' in bodyDict:
+                                q = bodyDict['question']
+                                q = q.replace("+", " ")
+                                q = q.replace("%3F","?")
+                                q = q.replace("%27","'")
+                                a = bodyDict['answer']
+                                a = a.replace("+", " ")
+                                a = a.replace("%3F","?")
+                                a = a.replace("%27","'")
+                                query = 'insert into questions(question,answer,quizid) values("' + str(q) + '","' + str(a) + '",' + str(qno) + ')'
+                                cursor.execute(query)
+                                mysqlcnx.commit()
+                                query = 'update quizzes set length = length + 1 where quizid = ' + str(qno)
+                                cursor.execute(query)
+                                mysqlcnx.commit()
+                                body += dashboard(username,userid)
+                            else:
+                                body += addQuestions(username,cursor,userid)
+                        else:
+                            body += addQuestionsSelect(username,cursor,userid)
                 else:
                     logger.info('not authenticated')
                     body = '<a href="/quiz">not authenticated</a>'
@@ -513,8 +611,8 @@ def application(environ, start_response):
             body = """
                 <p><form action="quiz" method="post">
                 <input type="hidden" name="authentication" value="NONE">
-                <input type="text" name="username">
-                <input type="text" name="password">
+                <input type="text" name="username" autocomplete="off">
+                <input type="text" name="password" autocomplete="off">
                 <input type="submit" value="Log in">
                 </form></p>
                 <p><form action="signup" method="post">
