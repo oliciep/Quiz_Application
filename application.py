@@ -3,8 +3,8 @@ import logging.handlers #package for logging
 from wsgiref.simple_server import make_server #creates server to test
 import mysql.connector #sql integration package
 import smtplib, ssl
-version = '48'
-whatsnew = 'Emails now'
+version = '49'
+whatsnew = 'Fixed a lot of stuff'
 
 # set up logging
 logger = logging.getLogger(__name__)
@@ -132,7 +132,6 @@ def getFullName(cursor, username):
 
 # The entire process of the quiz being done.
 def quizProcess(bodyDict,mysqlcnx,cursor, body, gameover,username):
-    chalmode = True
     qid = bodyDict['qid']
     score = bodyDict['score']
     quizid = bodyDict['quizid']
@@ -140,6 +139,18 @@ def quizProcess(bodyDict,mysqlcnx,cursor, body, gameover,username):
     userid = bodyDict['userid']
     question = bodyDict['question']
     useranswer = bodyDict['usanswer']
+    if 'challengeid' in bodyDict:
+        challengeid = bodyDict['challengeid']
+        if not challengeid:
+            challengeid = '0'
+    else:
+        challengeid = '0'
+    if 'opponentid' in bodyDict:
+        opponentid = bodyDict['opponentid']
+        if not opponentid:
+            opponentid = '0'
+    else:
+        opponentid = '0'
     qsdone = str(int(qsdone) + 1)
     logger.info("qid: %s, score: %s, qsdone: %s", qid, score, qsdone)
     answer = bodyDict['answer']
@@ -152,10 +163,6 @@ def quizProcess(bodyDict,mysqlcnx,cursor, body, gameover,username):
     cursor.execute(query)
     numqs = int(cursor.fetchone()[0])
     logger.info("numqs: %d", numqs)
-    try:
-        chalid
-    except NameError:
-        chalmode = False
     if numqs >= int(qsdone) and gameover != True:
         result = answer
         uppresult = result.upper()
@@ -175,34 +182,39 @@ def quizProcess(bodyDict,mysqlcnx,cursor, body, gameover,username):
             query = 'update quizzes set plays = plays + 1 where quizid = ' + quizid
             cursor.execute(query)
             mysqlcnx.commit()
-            if chalmode == True:
+            print(opponentid)
+            print(challengeid)
+            if int(challengeid) != 0 or int(opponentid) != 0 :
                 body += 'You have completed the challenge!<br>'
-                if chalid == 2:
-                    print('pass')    
-                elif chalid == 1:
-                    query = 'insert into challenge(user1,user2,quizid,score1) values("' + username + '","' + opponentid + '",' + str(quizid) + ',' + str(score) + ')'
+                print(opponentid)
+                print(challengeid)
+                if int(opponentid) != 0:
+                    query = 'insert into challenge(user1,user2,quizid,score1) values("' + userid + '","' + opponentid + '",' + str(quizid) + ',' + str(score) + ')'
                     cursor.execute(query)
                     mysqlcnx.commit()
-                    sendRequest(cursor,userid,quizid,username)
+                    sendRequest(cursor,userid,quizid,username,opponentid)
                 else:
                     query = 'select user1 from challenge where id = ' + str(challengeid)
                     cursor.execute(query)
+                    challengerid = cursor.fetchone()[0]
+                    query = 'select username from users where id = ' + str(challengerid)
+                    cursor.execute(query)
+                    user1 = cursor.fetchone()[0]
                     score = int(score)
-                    opp = cursor.fetchone()[0]
                     query = 'select score1 from challenge where id = ' + str(challengeid)
                     cursor.execute(query)
                     oppscore = cursor.fetchone()[0]
                     if score > int(oppscore):
-                        body += '<font color = "green">Congratulations! You defeated ' + str(opp) + ' by ' + str((int(score)-int(oppscore))) + ' points in the challenge!</font>'
+                        body += '<font color = "green">Congratulations! You defeated ' + str(user1) + ' by ' + str((int(score)-int(oppscore))) + ' points in the challenge!</font>'
                         res = 0
                     elif score == int(oppscore):
-                        body += '<font color = "yellow">Wow! You drew with ' + str(opp) + ' in the challenge!</font>'
+                        body += '<font color = "yellow">Wow! You drew with ' + str(user1) + ' in the challenge!</font>'
                         res = 1
                     else:
-                        body += '<font color = "red">Oh no! You lost to ' + str(opp) + ' by ' + str((int(oppscore-int(score)))) + ' in the challenge!</font>'
+                        body += '<font color = "red">Oh no! You lost to ' + str(user1) + ' by ' + str((int(oppscore-int(score)))) + ' in the challenge!</font>'
                         res = 2
                     body += '<br>'
-                    sendResults(cursor,username,res)
+                    sendResults(cursor,username,res,challengeid)
                     query = 'delete from challenge where id = ' + challengeid
                     cursor.execute(query)
                     mysqlcnx.commit()
@@ -211,7 +223,6 @@ def quizProcess(bodyDict,mysqlcnx,cursor, body, gameover,username):
             body += highscore(cursor,quizid,numqs)
             body += '<br> <br>'
             body += vote(username,userid,quizid)
-            chalid = 2
             gameover = True
     return gameover, score, qid, qsdone, body, quizid
 
@@ -248,7 +259,7 @@ def dashboard(username,userid):
     return formBody
 
 #Allows user to select a quiz to play 
-def selectQuiz(username,cursor,userid,sort): 
+def selectQuiz(username,cursor,userid,sort,opponentid): 
     formBody = '<p><form action="quiz" method="post">'
     formBody += initForm(username,formBody,userid,'play')
     formBody += 'Sort by:  '
@@ -263,18 +274,22 @@ def selectQuiz(username,cursor,userid,sort):
             query = 'select quizid,title,reputation,plays,topic,creator,length from quizzes order by reputation desc'
             cursor.execute(query)
             quizinfo = cursor.fetchall()
+            formBody += '<input type="hidden" name="opponentid" value=' + opponentid + '>'
         if sort == 'popular':
             query = 'select quizid,title,reputation,plays,topic,creator,length from quizzes order by plays desc'
             cursor.execute(query)
             quizinfo = cursor.fetchall()
+            formBody += '<input type="hidden" name="opponentid" value=' + opponentid + '>'
         if sort == 'recent':
             query = 'select quizid,title,reputation,plays,topic,creator,length from quizzes order by quizid desc'
             cursor.execute(query)
             quizinfo = cursor.fetchall()
+            formBody += '<input type="hidden" name="opponentid" value=' + opponentid + '>'
         if sort == 'length':
             query = 'select quizid,title,reputation,plays,topic,creator,length from quizzes order by length asc'
             cursor.execute(query)
             quizinfo = cursor.fetchall()
+            formBody += '<input type="hidden" name="opponentid" value=' + opponentid + '>'
     for q in quizinfo:
         quizid = str(q[0])
         quiname = str(q[1])
@@ -291,6 +306,7 @@ def selectQuiz(username,cursor,userid,sort):
         elif repi < 0:
             colour = 'red'
         formBody += '<button name="quizid" type = "submit" value = "' + quizid + '">' + quiname  + '</button> Created by: ' + creator + ' <br> Topic: <font color = "purple">' + topic + '</font>  Length: <font color = "orange">' + length + '</font> questions<br> <font color = "' + colour + '">Reputation: ' + rep + '</font>   Plays: <font color = "blue">' + plays + '</font>'
+        formBody += '<input type="hidden" name="opponentid" value=' + opponentid + '>'
         formBody += '<br><br>'
         i = i + 1
     formBody += goBack()
@@ -347,18 +363,19 @@ def addQuestions(username,cursor,userid):
 def challenge(username,cursor,userid):
     formBody = '<p><form action="quiz" method="post">'
     formBody += initForm(username,formBody,userid,'add')
-    global chalid
-    chalid = 0
     formBody += '<h2><b>Welcome to the challenge screen!</b></h2> <br> <h3><font color = "yellow">Pending Challenges:</font></h3> <br>'
     query = 'select id,user1,quizid from challenge where user2 = ' + userid
     cursor.execute(query)
     challenges = cursor.fetchall()
     for c in challenges:
+        query = 'select username from users where id = ' + str(c[1])
+        cursor.execute(query)
+        origname = str(cursor.fetchone()[0])
         query = 'select title from quizzes where quizid = ' + str(c[2])
         cursor.execute(query)
         quiname = str(cursor.fetchone()[0])
-        formBody += '<b><font color = "green">' + str(c[1]) + ' challenged you to a quiz on ' + quiname + '!</font></b>'
-        formBody += '<button name ="chalacc" type = "submit" value = ' +str(c[0]) + '>Play!</button>  '
+        formBody += '<b><font color = "green">' + origname + ' challenged you to a quiz on ' + quiname + '!</font></b>'
+        formBody += '<button name ="challengeid" type = "submit" value = ' + str(c[0]) + '>Play!</button>  '
         formBody += '<button name ="decline" type = "submit" value = ' + str(c[0]) + '>Decline</button><br><br>'
     formBody += '<br><h3><i> Or please choose the user you want to challenge.</i></h3> <br>'
     query = 'select count(id) from users'
@@ -376,11 +393,11 @@ def challenge(username,cursor,userid):
     return formBody
 
 # This function allows to send emails asking people to respond to challenges
-def sendRequest(cursor,userid,quizid,username):
+def sendRequest(cursor,userid,quizid,username,opponentid):
     port = 587  
     smtp_server = 'smtp.gmail.com'
     sender_email = 'quizzapp2020@gmail.com'
-    query = 'select email from users where id = ' + opponentid
+    query = 'select email from users where id = ' + str(opponentid)
     cursor.execute(query)    
     receiver_email = str(cursor.fetchone()[0])
     query = 'select title from quizzes where quizid = ' + quizid
@@ -400,14 +417,14 @@ Go to http://ec2-3-9-188-244.eu-west-2.compute.amazonaws.com/quiz to play it!"""
         server.sendmail(sender_email, receiver_email, message)
 
 # This function allows to send emails giving an update on a challenge
-def sendResults(cursor,username,res):
+def sendResults(cursor,username,res,challengeid):
     port = 587  
     smtp_server = 'smtp.gmail.com'
     sender_email = 'quizzapp2020@gmail.com'
     query = 'select user1 from challenge where id = ' + challengeid
     cursor.execute(query)
     user1 = cursor.fetchone()[0]
-    query = 'select email from users where username = "' + str(user1) + '"'
+    query = 'select email from users where id = "' + str(user1) + '"'
     cursor.execute(query)    
     receiver_email = str(cursor.fetchone()[0])
     password = 'xA3dsaD3a!'
@@ -531,10 +548,8 @@ def application(environ, start_response):
                     if authstatus.startswith('NONE'):
                         username = bodyDict['username']
                         password = bodyDict['password']
-                        print(bodyDict)
                         if username == '' or password == '':
                             body = '<a href="/quiz">not authenticated</a>'
-                            print('safda')
                         else:
                             query = 'select password from users where username = "' + username + '"'
                             cursor.execute(query)
@@ -568,36 +583,41 @@ def application(environ, start_response):
                     if not 'mode' in bodyDict or bodyDict['mode'] == '' or 'goback' in bodyDict:    
                         body += dashboard(username,userid)
                     elif bodyDict['mode'] == 'select' or 'sort' in bodyDict or 'userid2' in bodyDict:
-                        global opponentid
                         if 'sort' in bodyDict:
                             sort = bodyDict['sort']
-                            opponentid = ''
+                            if 'opponentid' in bodyDict:
+                                opponentid = bodyDict['opponentid']
+                            else:
+                                opponentid = '0'
                         elif 'userid2' in bodyDict:
                             opponentid = str(bodyDict['userid2'])
-                            global chalid
-                            chalid = 1
                             sort = 'popular'
                         else:
-                            opponentid = ''
+                            opponentid = '0'
                             sort = 'popular'
-                        body += selectQuiz(username,cursor,userid,sort)
+                        body += selectQuiz(username,cursor,userid,sort,opponentid)
                     elif 'decline' in bodyDict:
                         deleteid = bodyDict['decline']
                         query = 'delete from challenge where id = ' + deleteid
                         cursor.execute(query)
                         mysqlcnx.commit()
                         body += challenge(username,cursor,userid)
-                    elif bodyDict['mode'] == 'play' or 'chalacc' in bodyDict:
-                        if 'chalacc' in bodyDict:
-                            global challengeid
-                            challengeid = bodyDict['chalacc']
+                    elif bodyDict['mode'] == 'play' or 'challengeid' in bodyDict:
+                        if 'challengeid' in bodyDict:
+                            challengeid = bodyDict['challengeid']
+                            opponentid = 0
                             query = 'select quizid from challenge where id = ' + str(challengeid)
                             cursor.execute(query)
                             quizid = str(cursor.fetchone()[0])
                         else:
+                            challengeid = 0
+                            if 'opponentid' in bodyDict:
+                                opponentid = bodyDict['opponentid']
+                            else:
+                                opponentid = 0
                             quizid = bodyDict['quizid']
                         if 'answer' in bodyDict:
-                            gameover,score,qid,qsdone,body,quizid = quizProcess(bodyDict,mysqlcnx,cursor,body,gameover,username,)
+                            gameover,score,qid,qsdone,body,quizid = quizProcess(bodyDict,mysqlcnx,cursor,body,gameover,username)
                         else:
                             qid = str(0)
                             score = '0'
@@ -605,7 +625,6 @@ def application(environ, start_response):
                             query = 'select question,answer from questions where quizid = ' + str(quizid) + ' limit 1 offset ' + str(qid)
                             cursor.execute(query)
                             question,answer = cursor.fetchone()
-                            print(answer)
                         if gameover == False:
                             query = 'select question,answer from questions where quizid = ' + str(quizid) + ' limit 1 offset ' + str(qid)
                             cursor.execute(query)
@@ -621,6 +640,10 @@ def application(environ, start_response):
                             body += '<input type="hidden" name="question" value=' + question + '>'
                             body += '<input type="hidden" name="answer" value=' + answer + '>'
                             body += '<input type="submit" value="Submit"></p>'
+                            if challengeid != 0:
+                                body += '<input type="hidden" name="challengeid" value =' + str(challengeid) + '>'
+                            if opponentid != 0:
+                                body += '<input type="hidden" name="opponentid" value =' + str(opponentid) + '>'
                     elif bodyDict['mode'] == 'create':
                         if 'quizname' in bodyDict:
                             topic = bodyDict['topic']
