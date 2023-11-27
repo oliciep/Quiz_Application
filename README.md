@@ -21,7 +21,7 @@ This project is a python based quiz application hosted with AWS. Users can sign 
 
 ## Acknowledgements
 I used the following sites to help my project:
- - [AWS](https://aws.amazon.com/)
+ - [AWS Hosting](https://aws.amazon.com/)
 
 
 ## Authors
